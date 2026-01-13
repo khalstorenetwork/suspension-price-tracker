@@ -3,80 +3,57 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 
 export default function ManageProducts() {
-  // Data State
-  const [products, setProducts] = useState<any[]>([])
-  const [brands, setBrands] = useState<any[]>([])
+  // State for data
+  const [products, setProducts] = useState([])
+  const [brands, setBrands] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
-  // Smart Suggestions State
-  const [suggestions, setSuggestions] = useState({
-    makes: [] as string[],
-    models: [] as string[],
-    variants: [] as string[]
-  })
-
-  // Form State
+  // State for form fields
   const [formData, setFormData] = useState({
     brand_id: '',
     car_make: '',
     car_model: '',
-    product_variant: '', 
+    product_variant: '', // Was 'car_variant' before fix
     category: 'Shock Absorber',
     position: 'Front (2 pcs)',
     part_number: ''
   })
 
+  // Load initial data
   useEffect(() => {
     fetchData()
   }, [])
 
   const fetchData = async () => {
     setLoading(true)
-    
-    // 1. Get Brands
+    // 1. Get Brands for the dropdown
     const { data: brandData } = await supabase
       .from('brands')
       .select('*')
       .order('name', { ascending: true })
+    
     if (brandData) setBrands(brandData)
 
-    // 2. Get Products (to build the list and suggestions)
+    // 2. Get Products with Brand names joined
     const { data: productData, error } = await supabase
       .from('products')
-      .select(`*, brands (name)`)
+      .select(`
+        *,
+        brands (name)
+      `)
       .order('created_at', { ascending: false })
 
     if (error) console.error('Error:', error)
-    else {
-      setProducts(productData || [])
-      extractSuggestions(productData || [])
-    }
+    else setProducts(productData || [])
     
     setLoading(false)
   }
 
-  // LOGIC: Extract unique Makes, Models, and Variants from existing data
-  const extractSuggestions = (data: any[]) => {
-    // 1. Get Unique Makes
-    const uniqueMakes = [...new Set(data.map(p => p.car_make))].sort()
-    
-    // 2. Get Unique Models
-    const uniqueModels = [...new Set(data.map(p => p.car_model))].sort()
-
-    // 3. Get Unique Variants (Standard, Heavy Duty, Sport, etc.)
-    const uniqueVariants = [...new Set(data.map(p => p.product_variant))].sort()
-
-    setSuggestions({
-      makes: uniqueMakes,
-      models: uniqueModels,
-      variants: uniqueVariants
-    })
-  }
-
-  const handleCategoryChange = (e: any) => {
+  // Handle category change to enforce Position rules
+  const handleCategoryChange = (e) => {
     const newCategory = e.target.value
-    let newPosition = 'Front (2 pcs)' 
+    let newPosition = 'Front (2 pcs)' // Default for Shocks
 
     if (newCategory === 'Coil Spring') {
       newPosition = 'Carset (4 pcs)'
@@ -89,37 +66,36 @@ export default function ManageProducts() {
     })
   }
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setSubmitting(true)
 
-    // Trim whitespace to ensure "City " equals "City"
-    const cleanData = {
-      ...formData,
-      car_make: formData.car_make.trim(),
-      car_model: formData.car_model.trim(),
-      product_variant: formData.product_variant.trim()
-    }
-
-    const { error } = await supabase.from('products').insert([cleanData])
+    const { error } = await supabase
+      .from('products')
+      .insert([formData])
 
     if (error) {
       alert('Error adding product: ' + error.message)
     } else {
-      // Keep some fields for faster entry
+      // Reset form but keep some fields for faster entry of similar items
       setFormData({
         ...formData,
-        position: 'Front (2 pcs)', 
+        position: 'Front (2 pcs)', // Reset position
         part_number: ''
       })
-      fetchData() 
+      fetchData() // Refresh list
     }
     setSubmitting(false)
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id) => {
     if (!confirm('Delete this product?')) return
-    const { error } = await supabase.from('products').delete().eq('id', id) 
+    
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id)
+      
     if (error) alert(error.message)
     else fetchData()
   }
@@ -140,7 +116,7 @@ export default function ManageProducts() {
             <select 
               value={formData.brand_id}
               onChange={(e) => setFormData({...formData, brand_id: e.target.value})}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
               required
             >
               <option value="">-- Select Brand --</option>
@@ -152,34 +128,24 @@ export default function ManageProducts() {
             <label className="block text-xs font-medium text-gray-500 mb-1">Car Make</label>
             <input 
               type="text" 
-              list="makes-list" // Connect to datalist
               placeholder="e.g. Honda"
               value={formData.car_make}
               onChange={(e) => setFormData({...formData, car_make: e.target.value})}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
               required 
             />
-            {/* The Smart List */}
-            <datalist id="makes-list">
-              {suggestions.makes.map(item => <option key={item} value={item} />)}
-            </datalist>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Car Model</label>
             <input 
               type="text" 
-              list="models-list" // Connect to datalist
               placeholder="e.g. City"
               value={formData.car_model}
               onChange={(e) => setFormData({...formData, car_model: e.target.value})}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
               required 
             />
-            {/* The Smart List */}
-            <datalist id="models-list">
-              {suggestions.models.map(item => <option key={item} value={item} />)}
-            </datalist>
           </div>
 
           {/* Row 2 */}
@@ -187,17 +153,12 @@ export default function ManageProducts() {
             <label className="block text-xs font-medium text-gray-500 mb-1">Product Variant</label>
             <input 
               type="text" 
-              list="variants-list" // Connect to datalist
-              placeholder="e.g. Standard / Heavy Duty"
+              placeholder="e.g. Heavy Duty / Sport"
               value={formData.product_variant}
               onChange={(e) => setFormData({...formData, product_variant: e.target.value})}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
               required 
             />
-            {/* The Smart List */}
-            <datalist id="variants-list">
-              {suggestions.variants.map(item => <option key={item} value={item} />)}
-            </datalist>
           </div>
 
           <div>
@@ -205,7 +166,7 @@ export default function ManageProducts() {
             <select 
               value={formData.category}
               onChange={handleCategoryChange}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
             >
               <option value="Shock Absorber">Shock Absorber</option>
               <option value="Coil Spring">Coil Spring</option>
@@ -217,7 +178,7 @@ export default function ManageProducts() {
             <select 
               value={formData.position}
               onChange={(e) => setFormData({...formData, position: e.target.value})}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
             >
               {formData.category === 'Shock Absorber' ? (
                 <>
@@ -239,7 +200,7 @@ export default function ManageProducts() {
               placeholder="e.g. 333000 / 341000"
               value={formData.part_number}
               onChange={(e) => setFormData({...formData, part_number: e.target.value})}
-              className="w-full rounded border-gray-300 p-2 text-sm text-black"
+              className="w-full rounded border-gray-300 p-2 text-sm"
             />
           </div>
 
@@ -269,9 +230,9 @@ export default function ManageProducts() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={4} className="p-6 text-center">Loading...</td></tr>
+              <tr><td colSpan="4" className="p-6 text-center">Loading...</td></tr>
             ) : products.length === 0 ? (
-              <tr><td colSpan={4} className="p-6 text-center text-gray-500">No products yet.</td></tr>
+              <tr><td colSpan="4" className="p-6 text-center text-gray-500">No products yet.</td></tr>
             ) : (
               products.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
