@@ -5,11 +5,10 @@ import Link from 'next/link'
 
 export default function PublicHomepage() {
   const [loading, setLoading] = useState(true)
-  // Fix: Use <any> to allow dynamic objects
+  // Use <any> to bypass strict typing for now
   const [settings, setSettings] = useState<any>({})
   const [viewMode, setViewMode] = useState('customer') 
   
-  // Fix: Define arrays as 'any[]'
   const [rawProducts, setRawProducts] = useState<any[]>([])
   const [groupedData, setGroupedData] = useState<any[]>([])
   const [activeBrands, setActiveBrands] = useState<string[]>([])
@@ -23,13 +22,15 @@ export default function PublicHomepage() {
   const fetchPublicData = async () => {
     setLoading(true)
     
+    // 1. Get Settings
     const { data: settingsData } = await supabase.from('app_settings').select('*')
-    const settingsMap: any = {} // Fix: Explicitly allow any keys
+    const settingsMap: any = {}
     if (settingsData) {
       settingsData.forEach((s: any) => settingsMap[s.setting_key] = s.is_visible)
     }
     setSettings(settingsMap)
 
+    // 2. Get Data
     const { data: productData, error } = await supabase
       .from('products')
       .select(`*, brands (name), prices (*)`)
@@ -60,13 +61,14 @@ export default function PublicHomepage() {
       (p.part_number && p.part_number.toLowerCase().includes(query))
     )
 
-    // Fix: Cast the set to string array
     const uniqueBrandNames = [...new Set(filtered.map((p: any) => p.brands.name))].sort() as string[]
     setActiveBrands(uniqueBrandNames)
 
     const groups: any = {}
+    
     filtered.forEach((p: any) => {
       const rowKey = `${p.car_make}|${p.car_model}|${p.product_variant}|${p.position}|${p.category}`
+      
       if (!groups[rowKey]) {
         groups[rowKey] = {
           key: rowKey,
@@ -78,9 +80,19 @@ export default function PublicHomepage() {
           pricesByBrand: {}
         }
       }
-      const priceObj = (p.prices && p.prices.length > 0) ? p.prices[0] : null
+      
+      // === FIX IS HERE ===
+      // Check if p.prices is an Array (Old way) or Object (New way)
+      let priceObj = null
+      if (Array.isArray(p.prices)) {
+        priceObj = (p.prices.length > 0) ? p.prices[0] : null
+      } else if (p.prices) {
+        priceObj = p.prices // It's already the object we want
+      }
+
       groups[rowKey].pricesByBrand[p.brands.name] = priceObj
     })
+    
     setGroupedData(Object.values(groups))
   }
 
@@ -96,7 +108,6 @@ export default function PublicHomepage() {
 
   const visibleTiers = getVisibleTiers()
 
-  // Helper to render a price cell
   const renderPriceCell = (row: any, brandName: string, tierKey: string) => {
     const cellKey = `${row.key}-${brandName}-${tierKey}`
     const priceData = row.pricesByBrand[brandName]
